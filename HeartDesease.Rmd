@@ -1,0 +1,371 @@
+---
+title: "Heart Disease UCI"
+author: "Dominik Wolff"
+date: "3 6 2019"
+output: pdf_document
+---
+
+# Detecting heart desease risks
+## Abstract
+This work analyzes risk factors for heart desease based on the "Heart Disease UCI dataset."
+The dataset is derived from Kaggle (https://www.kaggle.com/ronitf/heart-disease-uci/downloads/heart-disease-uci.zip/1).
+The dataset contains 13 features and the target variable. The "target" refers to the presence of heart disease in the patient. It is integer valued from 0 (no presence) to 1 (present).
+The 13 features are:
+ 1. age 
+ 2. sex 
+ 3. chest pain type (4 values) 
+ 4. resting blood pressure 
+ 5. serum cholestoral in mg/dl 
+ 6. fasting blood sugar > 120 mg/dl
+ 7. resting electrocardiographic results (values 0,1,2)
+ 8. maximum heart rate achieved 
+ 9. exercise induced angina 
+ 10. oldpeak = ST depression induced by exercise relative to rest 
+ 11. the slope of the peak exercise ST segment 
+ 12. number of major vessels (0-3) colored by flourosopy 
+ 13. thal: 3 = normal; 6 = fixed defect; 7 = reversable defect
+
+
+# Load required packages
+```{r loadPackages}
+knitr::opts_chunk$set(echo = FALSE)
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(lubridate)) install.packages("lubridate", repos = "http://cran.us.r-project.org")
+if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
+if(!require(naivebayes)) install.packages("naivebayes", repos = "http://cran.us.r-project.org")
+if(!require(rmarkdown)) install.packages("rmarkdown", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
+if(!require(rpart)) install.packages("rpart", repos = "http://cran.us.r-project.org")
+```
+# Download heart desease dataset and prepare data
+
+##Source of the Data
+https://www.kaggle.com/ronitf/heart-disease-uci/downloads/heart-disease-uci.zip/1.
+The data is downloaded from the web and unzipped.
+The csv file is saved to the working directory.
+
+```{r DownloadDataset, echo=TRUE}
+tmpdir <-"C:/Users/Dominik/Downloads/"
+setwd(tmpdir)
+
+url <- "https://www.kaggle.com/ronitf/heart-disease-uci/downloads/heart-disease-uci.zip/1"
+temp <- tempfile(tmpdir=tmpdir, fileext=".zip")
+download.file(url, temp)
+unzip(temp)
+unlink(temp)
+
+```
+
+
+#Prepare Data: 
+*Load data from csv.
+*Rename column names.
+```{r PreprocessData, echo=TRUE}
+HeartDeaseaseData <- read.csv("C:/Users/Dominik/Downloads/heart.csv",header = TRUE, sep = ",",dec = ".")
+class(HeartDeaseaseData)             
+dim(HeartDeaseaseData) 
+
+
+names <- c("age",
+            "sex",
+            "ChestPainType",
+            "RestingBloodPressure",
+            "SerumCholestoral",
+            "FastingBloodSugar",
+            "RestingElectrocardiographic",
+            "MaximumHeartRate", 
+            "ExerciseAngina",
+            "STDepressionExercise", 
+            "SlopePeakExercise", 
+            "NumberMajorVessels",
+            "thal",
+            "heartdesease")
+
+names(HeartDeaseaseData) <- names
+head(HeartDeaseaseData)
+
+#Check for missing values
+sum(is.na(HeartDeaseaseData))
+
+```
+There are no missing values in the dataset.
+
+#Explanatory Data Analysis
+##Plot histograms for all variables to analyze the distribution
+```{r ExplanatoryDataAnalysis, echo=TRUE}
+for (i in (1:ncol(HeartDeaseaseData))){
+hist(HeartDeaseaseData[,i], xlab=names(HeartDeaseaseData[i]), main="Histograms of heart desease dataset")
+}
+
+```
+# Show a data summary
+```{r DataSummary, echo=TRUE}
+summary(HeartDeaseaseData)
+```
+
+#Find risk factors for heart desease
+##Compute correlation coefficients with target variable for all features 
+```{r RiskFactorAnalysis, echo=TRUE}
+correlations <- NULL
+for (i in (1:(ncol(HeartDeaseaseData)-1))){
+correlations[i] <- cor(HeartDeaseaseData[,i],HeartDeaseaseData$heartdesease)
+}
+
+names(correlations) <-names(HeartDeaseaseData[-ncol(HeartDeaseaseData)])
+as.data.frame(correlations)
+sort(correlations, decreasing=TRUE)
+
+```
+##Findings from correlation analysis:
+*The Chest Pain Type as well as the maximum heart rate are important risk factors  for heart deseases
+
+
+
+#Setup Training and Testing Datasets
+*Covert target variable to factor
+*Shuffle data
+*Split into training data (70%) and test data (30%)
+*check dimensions
+```{r SplitDataset, echo=TRUE}
+ColsToFactors <- c( 
+            #"sex",
+            #"ChestPainType",
+            #"FastingBloodSugar",
+            #"RestingElectrocardiographic",
+            #"ExerciseAngina",
+            #"SlopePeakExercise",
+            #"NumberMajorVessels",
+            #"thal",
+            "heartdesease")
+            
+HeartDeaseaseData[,ColsToFactors] <- as.factor(HeartDeaseaseData[,ColsToFactors])
+
+
+RowIndices <- sample((1:nrow(HeartDeaseaseData)))
+HeartDeaseaseData <- HeartDeaseaseData[RowIndices,]
+split <- floor(0.7*nrow(HeartDeaseaseData))
+training <- HeartDeaseaseData[(1:split),]
+test <- HeartDeaseaseData[((split+1):nrow(HeartDeaseaseData)),]
+
+dim(training)
+dim(test)
+```
+
+# Apply Machine Learning Models on dataset
+- Logistic Regression 
+- PCA Regression
+- Ridge, LASSO and Elastic Net Regression
+- Random Forest Model
+
+
+# Logistic regression ------------------------------------------------
+```{r Logistic regression, echo=TRUE}
+LogReg_model <- train(as.factor(heartdesease)~., data=training,  method="glm")
+
+  # Out-of-Sample predictions
+  LogReg_predictions <-
+    predict(
+      LogReg_model,
+      newdata = test,  type="prob")
+
+  # Out-of-sample forecast error:
+  confusionMatrix(
+    as.factor(as.numeric(LogReg_predictions[,2]>0.5)),
+    as.factor(test$heartdesease))
+
+```
+
+# Logistic PCA regression ----------------------------------------------------------
+```{r Logistic PCA regression, echo=TRUE}
+training.pca <- prcomp(training[,-ncol(training)])
+
+# Scree-Plot to determine number of PCA factors
+plot(training.pca , type="l", main="Scree Plot")
+# steep decline of the slope until the 5th PCA facor -> Include 5 PCA factors in PCA regression model
+
+# Set Training Parameter: Cross Validation & number of PCA Factors
+  #                         for PCA Regression
+  fitControlPCA <-
+    trainControl(method="none",
+                 preProcOptions=list(pcaComp=5),
+                 verboseIter = TRUE,
+                 allowParallel = TRUE)
+  
+# Logistic PCA Regression with 5 PCA Factors
+  PCR_model <-
+      train(
+      as.factor(heartdesease)~., 
+      data=training,  
+      method="glm",
+      trControl = fitControlPCA,
+      preProcess="pca",
+      weights = NULL
+    )
+  # Out-of-Sample predictions
+  PCR_predictions <-
+    predict(
+      PCR_model,
+      newdata = test,  type="prob")
+
+  # Out-of-sample forecast error:
+  confusionMatrix(
+    as.factor(as.numeric(PCR_predictions[,2]>0.5)),
+    as.factor(test$heartdesease))
+
+```
+
+
+#  Logistic, Ridge-, LASSO- and Elastic Net Regression ------------------------------
+```{r Log_Ridge_LASSO_regression, echo=TRUE}
+#  set Parameters --------------------------------------
+  set.seed(1234)
+  # Initialize Parameters
+  Elastic_NetParameter <- data.frame(alpha=NaN, lambda=NaN)
+  LASSO_Parameter      <- data.frame(alpha=NaN, lambda=NaN)
+  RidgeReg_Parameter   <- data.frame(alpha=NaN, lambda=NaN)
+
+  # Set Grids for hyperparameters
+  Ridge_Grid   <-
+    expand.grid(alpha  = 0,
+                lambda = exp(seq(-9.21034,9.21034,length.out = 100)))
+  LASSO_Grid   <-
+    expand.grid(alpha  = 1,
+                lambda = exp(seq(-9.21034,9.21034,length.out = 100)))
+  Elastic_Grid <-
+    expand.grid(alpha  = seq(0,1,length.out = 100),
+                lambda = exp(seq(-9.21034,9.21034,length.out = 100)))
+
+  # Set Training Parameter: Cross Validation
+  fitControl <- trainControl(method="cv",
+                             number=5,
+                             verboseIter = TRUE,
+                             allowParallel = TRUE)
+
+
+  
+# Logistic Ridge regression ----------------------------------------------------------
+  RidgeReg_model <- 
+    train(as.factor(heartdesease)~., 
+          data=training,  
+          method="glmnet",
+          trControl  = fitControl,
+          tuneGrid   = Ridge_Grid,
+          preProcess = NULL,
+          weights    = NULL)
+  # Parameter of the best Ridge-Model (in cross-valiation)
+  RidgeReg_Parameter <- RidgeReg_model$bestTune
+  RidgeReg_Parameter
+  # Ridge Regression Prediction
+  # Out-of-sample-Sample predictions
+  RidgeReg_predictions <-
+    predict(RidgeReg_model, test, type="prob")
+  # Out-of-sample forecast error:
+    # Out-of-sample forecast error:
+  confusionMatrix(
+    as.factor(as.numeric(RidgeReg_predictions[,2]>0.5)),
+    as.factor(test$heartdesease))
+
+
+  
+
+# Logistic LASSO regression ----------------------------------------------------------
+  LASSO_model <- train(
+    as.factor(heartdesease)~., 
+    data=training,  
+    method="glmnet",
+    trControl=fitControl,
+    tuneGrid=LASSO_Grid,
+    preProcess=NULL,weights=NULL
+  )
+  # Parameter of the best LASSO-Model (in cross-valiation)
+  LASSO_Parameter <- LASSO_model$bestTune
+  LASSO_Parameter 
+
+  # Out-of-sample-Sample predictions
+  LASSO_predictions <-
+    predict(LASSO_model, test, type="prob")
+  # Out-of-sample forecast error:
+   confusionMatrix(
+    as.factor(as.numeric(LASSO_predictions[,2]>0.5)),
+    as.factor(test$heartdesease))
+
+   
+   
+   
+# Logistic Elastic Net regression ----------------------------------------------------------
+  Elastic_Net_model <- train(
+    as.factor(heartdesease)~., 
+    data=training,  
+    method="glmnet",
+    trControl=fitControl,preProcess=NULL,weights=NULL
+  )
+  # Parameter of the best Elastic-Net-Model (in cross-valiation)
+  Elastic_NetParameter <- Elastic_Net_model$bestTune
+
+
+  # Out-of-sample-Sample predictions
+  Elastic_Net_predictions <-
+    predict(Elastic_Net_model, test, type="prob")
+  # Out-of-sample forecast error:
+  confusionMatrix(
+    as.factor(as.numeric(Elastic_Net_predictions[,2]>0.5)),
+    as.factor(test$heartdesease))
+```
+
+#  Random Forest -----------------------------------------------
+```{r RandomForest, echo=TRUE}
+# Decision Tree -----------------------------------------------
+  # grow tree 
+  tree <- rpart(as.factor(heartdesease)~., 
+           data=training)
+  
+# Plot decision tree as example
+  plot(tree)
+  text(tree, use.n=TRUE, all=TRUE, cex=.6)
+
+  
+#  Random Forest -----------------------------------------------
+  set.seed(1234)
+  rf_model <-
+    ranger (as.factor(heartdesease)~., 
+           data=training,  
+           probability = TRUE,
+           num.trees = 150,
+           splitrule="gini",
+           importance="impurity",
+           mtry=sqrt(ncol(training)-1),
+           verbose = TRUE)
+
+  barplot(rf_model$variable.importance, cex.names=0.7, horiz=FALSE, las=2, 
+          main="Variable Importance in Random Forest")
+
+ 
+
+
+
+  # Out-of-sample-Sample predictions
+  rf_predictions <- predict(rf_model,test)
+  rf_predictions <- rf_predictions$predictions
+  # Out-of-sample forecast error:
+  confusionMatrix(
+    as.factor(as.numeric(rf_predictions[,2]>0.5)),
+    as.factor(test$heartdesease))
+
+```
+
+#Conclusion:
+
+* The random forest model achieves a similar performance compared to the regression models on the test set.
+
+* The variable importance plot shows that the most important variables in the random forest model are:
+  1. Number of Major Vessels 
+  2. MaximumHeartRate (Feature 8: maximum heart rate achieved )
+  3. ChestPainType (Feature 3: chest pain type (4 values) )
+  4. DepressionExercise (Feature 10. oldpeak = ST depression induced by exercise relative to rest)
+  
+* The Ridge Regression Model achieves the best accuracy on the test set, slightly better than the PCA Regression, LASSO, ELastic Net and Random Forest
+
+  
+  
